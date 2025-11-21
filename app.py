@@ -12,11 +12,6 @@ app = Flask(__name__)
 # Allow overriding via env var for Docker/Deployment
 TAXONOMY_FILE = os.environ.get("TAXONOMY_PATH", "taxonomy_release.txt")
 
-# For reverse proxy deployments: set APPLICATION_ROOT to the subpath
-# e.g., APPLICATION_ROOT=/speciesnet-taxonomy-mapper
-# Defaults to '/' for local development
-app.config['APPLICATION_ROOT'] = os.environ.get("APPLICATION_ROOT", "/")
-
 # Global objects
 taxonomy = None
 matcher = None

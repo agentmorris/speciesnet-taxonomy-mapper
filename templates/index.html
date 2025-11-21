@@ -131,7 +131,7 @@
                 formData.append('location', locationInput.value);
                 formData.append('user_api_key', apiKeyInput.value);
 
-                const response = await fetch('{{ url_for("process") }}', { method: 'POST', body: formData });
+                const response = await fetch('process', { method: 'POST', body: formData });
 
                 if (!response.ok) throw new Error("Server error: " + response.statusText);
 

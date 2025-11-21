@@ -9,6 +9,3 @@ services:
 
       # Mount the API key file
       - ./gemini-key.txt:/app/gemini-key.txt
-    environment:
-      # Set the application root for reverse proxy deployment
-      - APPLICATION_ROOT=/speciesnet-taxonomy-mapper
