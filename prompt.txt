@@ -1,0 +1,119 @@
+# Setup
+
+cd ~/git/agentmorrisprivate/taxonomy-app-gcli
+conda create -n taxonomy-app python=3.12 pip -y
+conda activate taxonomy-app
+gemini -m gemini-3-pro-preview
+
+# Initial prompt
+
+I maintain an open-source computer vision model ("SpeciesNet") that classifies species in camera trap images:
+
+https://github.com/google/cameratrapai
+
+This model makes predictions across around 3000 categories.  Most of these are species (for example, "blue wildebeest"), but some are higher-level taxa (for example, "bovidae family").  The inference library for this model includes functionality to filter those predictions based on countries, using a hard-coded list of rules that indicate which taxa are allowed in which countries.  So for example, when an ecologist working in Canada runs the model, she would indicate that she is in CA, and if the model predicts "kangaroo", the inference library will see that kangaroos don't exist in Canada, and it will walk up the taxonomic tree until it gets to a taxon that is allowed in that country (which might result in a prediction of "mammal" or "animal").
+
+Most ecologists who use this model have small set of taxa that will actually occur in their study area; for example, the model may have hundreds of species that are allowed in Canada, but a particular ecologist may only have 10-20 taxa occurring in their study area.  Furthermore, ecologists don't necessarily label everything to species level; for example, an ecologist focused on mammals may have a single label called "bird" that covers all birds.
+
+For that reason, our postprocessing libraries include a function called restrict_to_taxa_list():
+
+https://megadetector.readthedocs.io/en/latest/postprocessing.html#megadetector.postprocessing.classification_postprocessing.restrict_to_taxa_list
+
+This function transforms a set of speciesnet results to a reduced set of output categories.  Specifically, it takes:
+
+* A set of SpeciesNet results
+* A .csv file with up to four columns:
+  * "latin" (required): a latin name in the SpeciesNet taxonomy, i.e. one of the categories that may be output from the model
+  * "common": the corresponding common name that [latin] should be mapped to
+  * "original_latin": optional, and only used for book-keeping... the latin name that the user uses for this taxon.
+  * "original_common": optional, and only used for book-keeping... the common name that the user uses for this taxon.
+
+The restrict_to_taxa_list function verifies that all the values in the "latin" column are valid SpeciesNet output categories, then generates a new output file in the same format in which the categories have been mapped according to this .csv file.  All parents of allowable taxa are implicitly allowed; for example, if "white-tailed deer" is an allowed species, then "cervidae family" and "mammal" are allowed output labels also.
+
+Often a label will be mapped to a higher-level taxon than is initially intuitive.  For example, if a user's study area only contains white-tailed deer, we likely want *all* deer predictions - barbary deer, European roe deer, moose, elk, etc. - mapped to this label, so we would probably put "cervidae" in the "latin" column, and "white-tailed deer" in the "common" column.  Lower-level taxa are matched first, so for example, if we have rows that look like this:
+
+  latin,common
+  odocoileus,white-tailed deer
+  cervidae,other deer
+
+...then all predictions in the "Odocoileus" genus will be mapped to the category "white-tailed deer", and all other predictions in the cervidae family will be mapped to "other deer".
+
+It's typical for common names to be in a slightly unusual format, for example ecologists often use tags like:
+
+    deer_other
+    mongoose_banded
+    banded_mongoose
+
+It's also common for users to use species labels that aren't available in the SpeciesNet taxonomy.  We still want these to be reflected in the .csv file.  If the user has a single armadillo species in their study area, we would likely create a line like this, mapping the whole family to that single species:
+
+latin,common,original latin,original common
+dasypodidae,nine-banded armadillo,dasypus novemcinctus,nine-banded armadillo
+
+Here are some example files, I recommend taking a look at them:
+
+/Users/songsparrow/git/agentmorrisprivate/taxonomy-lists/cepek_speciesnet.csv
+/Users/songsparrow/git/agentmorrisprivate/taxonomy-lists/snapshot_serengeti_speciesnet_20251031.csv
+/Users/songsparrow/git/agentmorrisprivate/taxonomy-lists/thornton-guatemala_speciesnet.csv
+
+A copy of the SpeciesNet taxonomy file is here:
+
+/Users/songsparrow/models/speciesnet/taxonomy_release.txt
+
+This file is ~343KB, so it fits easily in memory.
+
+Here are example rows from that file:
+
+001795ae-1963-47f2-91cc-9dd627643a06;mammalia;cetartiodactyla;bovidae;nesotragus;;nesotragus species
+00339477-70ab-42aa-9a4f-ed2cca9a028f;aves;musophagiformes;musophagidae;tauraco;schuettii;black-billed turaco
+0052e235-369e-4019-a3a4-7dc6b29a2b5e;aves;pelecaniformes;ardeidae;gorsachius;;gorsachius species
+
+The GUIDs are not relevant; the other tokens represent the class/order/family/genus/species/common name.
+
+In almost every case, if a taxon is present in this file, its parent taxa should be present also.  For example, based on what I just showed you, the following lines (and all other parent taxa like them) should also be present somewhere:
+
+[some guid];mammalia;cetartiodactyla;bovidae;nesotragus;;
+[some guid];aves;musophagiformes;;;;
+[some guid];aves;pelecaniformes;;;;
+
+Users will often paste latin names rather than common names, and these may not use exactly the same taxonomy that SpeciesNet uses.  There is no simple way to handle this case; I often search the Web to reconcile mismatches in nomenclature; this is easier when common names are also available.
+
+Today we are going to build a Web-based application that makes it easier for users to create these .csv mapping files, given their label lists.  They should be able to paste a plain-text list of common names and/or latin names, and get a reasonable mapping to the speciesnet taxonomy.  It doesn't have to be perfect, the goal is to accelerate this process, but a human will always review the results.  I am likely to host the app on an Ubuntu Linux machine, though I am open to other suggestions.  The reason it can't be an entirely client-side app is that I want it to use Gemini to help with the soft matching of names (e.g. to figure out that "mongoose_banded" is "banded mongoose", or that "bird_spp" just means "bird species", i.e. "bird", and I want Gemini to help with taxonomy reconciliation across disagreements.  I need to have a default Gemini key in place for this, so it needs to live on a host somewhere.  I will likely use a free-tier Gemini key for this, and it may hit its limits often, so failures should be handled gracefully, with all features not requiring Gemini still working fine when we hit limit errors.
+
+Assuming that a backend is required as I'm suggesting, Python is preferred.  You are running in a Conda environment, you can install any pip-installable dependencies you need, just track them in a requirements.txt file.  
+
+During testing, I want to run everything locally, without containerization, but I will likely do the final deployment in Docker, although I am open to recommendations.
+
+I am open to suggestions about the front-end, for example whether the interface should be tabular, or free-text, whether there should be a single area with all the content or separate input and output content areas, etc.
+
+Before proceeding with the app, ask me at least three clarifying questions.
+
+Throughout this session, always err on the side of asking questions before coding, I am not in a hurry.
+
+# Follow-up questions
+
+** Re: input format...
+
+I'd like to support a plain-text set of lines that will be automatically recognized as common names, latin names, or both.  For example, ideally all of the following blocks are valid input:
+
+deer
+bear
+cow
+
+deer,odocoileus virginianus
+bear,ursus americanus
+cow,bos taurus
+
+odocoileus virginianus
+ursus americanus
+bos taurus
+
+In addition to being used for matching, those tokens should be used to populate the "original common" and/or "original latin" columns in the output. 
+
+** Re: unknowns...
+
+The unmatched text should be placed in the "original common" and/or "original latin" columns, and the "latin" and "common" columns should be left empty.
+
+** Re: workflow...
+
+Let's start with just a simple input --> process --> download pipeline, but I think the first extension we're likely to work on after we have an "MVP" is a more interactive matching process (e.g. suggesting multiple options), so keep that in mind in case it impacts the UI implementation.
+

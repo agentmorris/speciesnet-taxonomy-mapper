@@ -1,0 +1,11 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount the taxonomy file from the current directory
+      - ./taxonomy_release.txt:/app/taxonomy_release.txt
+
+      # Mount the API key file
+      - ./gemini-key.txt:/app/gemini-key.txt
