@@ -60,9 +60,16 @@ The application is containerized for easy deployment on Linux servers.
     *   Place `taxonomy_release.txt` in the project root directory (**required**).
     *   Ensure `gemini-key.txt` is present in the project root.
 
-2.  **Build and Run**:
+2.  **Build and Run (test)**:
     ```bash
+    docker-compose down
     docker-compose up --build
+    ```
+
+2.  **Build and Run (as a service)**:
+    ```bash
+    docker-compose down
+    docker-compose up --build -d
     ```
 
 The `docker-compose.yml` is pre-configured to mount both files from the current directory. If you need to use a different location for the taxonomy file, you can either modify the volume mount in `docker-compose.yml` or set the `TAXONOMY_PATH` environment variable in the Docker configuration.
